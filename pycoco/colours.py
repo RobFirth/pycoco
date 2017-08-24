@@ -75,6 +75,11 @@ hex['SDSS_r'] = '#ff0000'
 hex['SDSS_i'] = '#fd00ff'
 hex['SDSS_z'] = '#660066'
 
+hex["DES_g"] = hex['SDSS_g']
+hex["DES_r"] = hex['SDSS_r']
+hex["DES_i"] = hex['SDSS_i']
+hex["DES_z"] = hex['SDSS_z']
+
 hex['u'] = '#40d47e'
 hex['b'] = '#0000ff'
 hex['v'] = '#ffff00'

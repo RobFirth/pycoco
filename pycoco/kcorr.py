@@ -19,11 +19,12 @@ from numpy import log10, linspace, ones
 from scipy.integrate import simps
 from astropy import units as u
 from astropy.table import Table
-from astropy.constants import c
+from astropy.constants import c as c
 
 from .classes import *
 from .functions import *
 from .defaults import *
+from .utils import check_file_path, check_dir_path
 
 __all__ = ["offset",
             # "convert_AB_to_Vega",
@@ -131,35 +132,79 @@ def load_atmosphere(path = os.path.join(_default_lsst_throughputs_path, "baselin
     return atmos
 
 
-def calc_filter_area(filter_name = False, filter_path = _default_filter_dir_path):
-    filter_object = load_filter(os.path.join(filter_path, filter_name + ".dat"))
-    filter_object.calculate_effective_wavelength()
-    filter_area = simps(filter_object.throughput, filter_object.wavelength)
+def calc_filter_area(filter_name = False, filter_object=False, filter_path = _default_filter_dir_path):
+    """
+
+    :param filter_name:
+    :param filter_object:
+    :param filter_path:
+    :return:
+    """
+
+    if filter_object:
+        if hasattr(filter_object, "_effective_area"):
+            return filter_object._effective_area
+        else:
+            filter_object.calculate_filter_area()
+            return filter_object._effective_area
+    else:
+        check_file_path(os.path.join(filter_path, filter_name + ".dat"))
+
+        filter_object = load_filter(os.path.join(filter_path, filter_name + ".dat"))
+        filter_object.calculate_effective_wavelength()
+        filter_area = simps(filter_object.throughput, filter_object.wavelength)
+
     return filter_area
 
 
-def calc_spectrum_filter_flux(filter_name, SpecClass, filter_path = _default_filter_dir_path):
+def calc_spectrum_filter_flux(filter_name=False, filter_object=False, spectrum_object=False,
+                              filter_path = _default_filter_dir_path, spectrum_dir=None, spectrum_filename=None,
+                              correct_for_area=True):
     """
     returns flux in units of
 
+    :param filter_name:
+    :param spectrum_object:
+    :param filter_path:
+    :return:
     """
-    filter_object = load_filter(os.path.join(filter_path, filter_name + ".dat"))
-    filter_object.calculate_effective_wavelength()
-    filter_object.resample_response(new_wavelength = SpecClass.wavelength)
-    filter_area = simps(filter_object.throughput, filter_object.wavelength)
+    if not filter_object:
+        check_file_path(os.path.join(filter_path, filter_name + ".dat"))
 
-    transmitted_spec = filter_object.throughput * SpecClass.flux
+        filter_object = load_filter(os.path.join(filter_path, filter_name + ".dat"))
+        if not hasattr(filter_object, "lambda_effective"):
+            filter_object.calculate_effective_wavelength()
 
-    integrated_flux = simps(transmitted_spec, SpecClass.wavelength)
+    if not spectrum_object:
+        spectrum_path=os.path.join(spectrum_dir, spectrum_filename)
 
-    return  integrated_flux/filter_area
+        check_file_path(spectrum_path)
+
+        spectrum_object = SpectrumClass()
+        spectrum_object.load(filename=spectrum_filename, path=spectrum_dir)
+
+    filter_object.resample_response(new_wavelength = spectrum_object.wavelength)
+    if hasattr(filter_object, "_effective_area"):
+        filter_object.calculate_filter_area()
+        filter_area = filter_object._effective_area
+        # filter_area = simps(filter_object.throughput, filter_object.wavelength)
+
+    transmitted_spec = filter_object.throughput * spectrum_object.flux
+    integrated_flux = simps(transmitted_spec, spectrum_object.wavelength)
+
+    if correct_for_area:
+        return  integrated_flux/filter_area
+    else:
+        return  integrated_flux
 
 
-def calc_AB_flux(filter_name, filter_path = _default_filter_dir_path):
+def calc_AB_flux(filter_name, filter_path = _default_filter_dir_path, filter_object = False):
 
     AB = load_AB()
 
-    filter_object = load_filter(os.path.join(filter_path, filter_name + ".dat"))
+    if not filter_object:
+        filter_object = load_filter(os.path.join(filter_path, filter_name + ".dat"))
+
     filter_object.calculate_effective_wavelength()
     filter_object.resample_response(new_wavelength = AB.wavelength)
 
@@ -170,12 +215,14 @@ def calc_AB_flux(filter_name, filter_path = _default_filter_dir_path):
     return integrated_flux
 
 
-def calc_AB_zp(filter_name):
+def calc_AB_zp(filter_name=False, filter_object = False):
     """
 
     """
+    if not filter_object and filter_name:
+        filter_object = load_filter(os.path.join(_default_filter_dir_path, filter_name + ".dat"))
 
-    integrated_flux = calc_AB_flux(filter_name)
+    integrated_flux = calc_AB_flux(filter_name, filter_object=filter_object)
     area_corr_integrated_flux = integrated_flux / calc_filter_area(filter_name)
 
     return -2.5 * log10(area_corr_integrated_flux)
@@ -246,22 +293,30 @@ def load_dark_sky_spectrum(wmin = 1500*u.angstrom, wmax = 11000*u.angstrom, *arg
     return darksky
 
 
-def calc_m_darksky(filter_name, vega = False):
+def calc_m_darksky(filter_name=False, filter_object = False, dark_sky = False, vega = False):
     """
 
     :param filter_name:
     :param vega:
     :return:
     """
-    dark_sky_path = os.path.join(os.environ["LSST_THROUGHPUTS_BASELINE"], "darksky.dat")
-    darksky = SpectrumClass()
-    darksky.load(dark_sky_path, wavelength_u=u.nm, flux_u=u.cgs.erg / u.si.cm ** 2 / u.si.s / u.nm,
-                 fmt="ascii.commented_header", wmin=3500 * u.angstrom, wmax=11000 * u.angstrom, )
+    if not dark_sky:
+        dark_sky_path = os.path.join(os.environ["LSST_THROUGHPUTS_BASELINE"], "darksky.dat")
+        darksky = SpectrumClass()
+        darksky.load(dark_sky_path, wavelength_u=u.nm, flux_u=u.cgs.erg / u.si.cm ** 2 / u.si.s / u.nm,
+                     fmt="ascii.commented_header", wmin=3500 * u.angstrom, wmax=11000 * u.angstrom, )
 
-    if vega:
-        zp = calc_vega_zp(filter_name)
+    if filter_object:
+        if hasattr(filter_object):
+            zp = filter_object.zp_AB
+        else:
+            filter_object.get_zeropoint()
+            zp = filter_object.zp_AB
     else:
-        zp = calc_AB_zp(filter_name)
+        if vega:
+            zp = calc_vega_zp(filter_name)
+        else:
+            zp = calc_AB_zp(filter_name)
 
     return -2.5 * log10(calc_spectrum_filter_flux(filter_name, darksky)) - zp
 

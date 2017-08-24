@@ -17,15 +17,17 @@ from collections import OrderedDict
 import astropy as ap
 import astropy.units as u
 from astropy.constants import c
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord, Distance
 from astropy.time import Time
-from astropy.table import Table, vstack
+from astropy.table import Table, vstack, Row
+
 
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.ticker import MultipleLocator
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.interpolate import interp1d as interp1d
+from scipy.integrate import simps
 
 from .extinction import *
 from .colours import *
@@ -286,6 +288,23 @@ class BaseSpectrumClass():
             if verbose: print(path + ' not found')
 
 
+    def load_table(self, spec_table, path, trim_wavelength=False, wmin=3500 * u.angstrom,
+                   wmax=11000 * u.angstrom):
+        """Use with care - basically assumes you have all of your ducks in a row"""
+
+        if trim_wavelength:
+            spec_table = spec_table[np.bitwise_and(spec_table['wavelength'] > wmin, spec_table['wavelength'] < wmax)]
+
+        spec_table.meta["filepath"] = path
+        spec_table.meta["filename"] = path.split("/")[-1]
+
+        self.min_wavelength = np.nanmin(spec_table["wavelength"])
+        self.max_wavelength = np.nanmax(spec_table["wavelength"])
+        self.data = spec_table
+        self.wavelength = spec_table["wavelength"]
+        self.flux = spec_table["flux"]
+        pass
+
     def plot(self, xminorticks = 250, legend = True,
              verbose = False, compare_red = True,
              *args, **kwargs):
@@ -311,7 +330,7 @@ class BaseSpectrumClass():
             setup_plot_defaults()
 
             fig = plt.figure(figsize=[8, 4])
-            fig.subplots_adjust(left = 0.09, bottom = 0.13, top = 0.99,
+            fig.subplots_adjust(left = 0.09, bottom = 0.13, top = 0.95,
                                 right = 0.99, hspace=0, wspace = 0)
 
             ax1 = fig.add_subplot(111)
@@ -322,7 +341,7 @@ class BaseSpectrumClass():
 
 
             ax1.plot(self.data['wavelength'], self.flux, lw = 2,
-                         label = plot_label_string, color = 'Red',
+                         label = plot_label_string, color = 'C0',
                          *args, **kwargs)
 
             maxplotydata = np.nanmax(self.flux)
@@ -343,8 +362,8 @@ class BaseSpectrumClass():
 
             ## Label the axes
             xaxis_label_string = r'$\textnormal{Wavelength (\AA)}$'
-
-            yaxis_label_string = r'$\textnormal{Flux, erg s}^{-1}\textnormal{cm}^{-2}$'
+            # yaxis_label_string = r'$\textnormal{Flux, erg s}^{-1}\textnormal{cm}^{-2}$'
+            yaxis_label_string = r'$\textnormal{Flux, erg s}^{-1}\textnormal{\AA}^{-1}\textnormal{cm}^{-2}$'
 
             ax1.set_xlabel(xaxis_label_string)
             ax1.set_ylabel(yaxis_label_string)
@@ -467,7 +486,7 @@ class BaseSpectrumClass():
             check_dir_path(path)
 
             if os.path.isfile(outpath):
-                warnings.warn("Found existing file matching " + path + ". Run with squash = True to overwrite")
+                warnings.warn("Found existing file matching " + os.path.join(path, filename) + ". Run with squash = True to overwrite")
                 if squash:
                     print("Overwriting " + outpath)
                     self._spec_format_for_save().write(outpath, format = "ascii.fast_commented_header")
@@ -475,7 +494,7 @@ class BaseSpectrumClass():
 
             else:
                     print("Writing " + outpath)
-                    self._spec_format_for_save().write(outpath, format = "ascii")
+                    self._spec_format_for_save().write(outpath, format = "ascii.fast_commented_header")
 
         else:
             warnings.warn("Doesn't seem to be any data here (empty self.data)")
@@ -594,6 +613,7 @@ class BaseLightCurveClass():
 
         if hasattr(self, "phot"):
             filter_names = np.unique(self.phot["filter"])
+
             self.phot.add_index('filter', unique = True)
 
 
@@ -607,11 +627,15 @@ class BaseLightCurveClass():
 
                 # phot_table.meta = {"filter_filename": filter_filename}
                 phot_table.meta["filter_filename"] = filter_filename
+                if not isinstance(phot_table, Row):
+                # if len(np.unique(self.phot.loc["filter", filter_name]["MJD"])) > 1:
+                    indices = phot_table.argsort("MJD")
+                    # for column_name in phot_table.colnames:
+                    #     phot_table[column_name] = phot_table[column_name][indices]
+                    sorted_phot_table = Table([phot_table[column_name][indices] for column_name in phot_table.colnames])
+                else:
+                    sorted_phot_table = phot_table
 
-                indices = phot_table.argsort("MJD")
-                # for column_name in phot_table.colnames:
-                #     phot_table[column_name] = phot_table[column_name][indices]
-                sorted_phot_table = Table([phot_table[column_name][indices] for column_name in phot_table.colnames])
                 filter_key = np.unique(phot_table["filter"])[0]
 
                 if len(np.unique(phot_table["filter"])) > 1 or filter_key != filter_name:
@@ -623,7 +647,7 @@ class BaseLightCurveClass():
                 if check_file_path(os.path.abspath(path_to_filter)):
                     filter_object = FilterClass()
                     filter_object.read_filter_file(os.path.abspath(path_to_filter), verbose = verbose)
-
+                    filter_object.calculate_AB_zp()
                 else:
                     warnings.warn("Couldn't load the filter")
 
@@ -724,7 +748,7 @@ class BaseLightCurveClass():
     #     return save_table
 
 
-    def _phot_format_for_save(self, filters = False, verbose = False):
+    def _phot_format_for_save(self, names = ('MJD', 'flux', 'flux_err', 'filter'), filters = False, verbose = False, sort=False):
             """
             This is hacky - clear it up!
 
@@ -734,12 +758,18 @@ class BaseLightCurveClass():
             -------
             """
 
-            save_table = self.phot
+
+            if sort:
+                save_table = self.phot
+                save_table = save_table[save_table.argsort()]
+            else:
+                save_table = self.phot
 
             return save_table
 
 
     def save(self, filename, filters = False, path = False,
+             names = ('MJD', 'flux', 'flux_err', 'filter'),
              squash = False, verbose = True, *args, **kwargs):
         """
         Output the photometry loaded into the SNClass via self.load_phot* into a format
@@ -772,10 +802,10 @@ class BaseLightCurveClass():
                 warnings.warn("Found existing file matching " + outpath + ". Run with squash = True to overwrite")
                 if squash:
                     print("Overwriting " + outpath)
-                    self._phot_format_for_save(filters = filters).write(outpath, format = "ascii.fast_commented_header", overwrite = True)
+                    self._phot_format_for_save(filters = filters).write(outpath, format = "ascii.fast_commented_header", overwrite = True, names=names)
             else:
                     print("Writing " + outpath)
-                    self._phot_format_for_save(filters = filters).write(outpath, format = "ascii.fast_commented_header")
+                    self._phot_format_for_save(filters = filters).write(outpath, format = "ascii.fast_commented_header", names=names)
 
         else:
             warnings.warn("Doesn't seem to be any data here (empty self.data)")
@@ -827,18 +857,55 @@ class BaseLCModelClass():
         pass
 
 
-
 class BaseFilterClass():
     """
 
     """
 
     def __init__(self, verbose = True):
+        """
+
+        :param verbose:
+        """
         self._wavelength_units = u.Angstrom
         self._wavelength_units._format['latex'] = r'\rm{\AA}'
         self._frequency_units = u.Hertz
         # self.calculate_frequency()
         # self.calculate_effective_frequency()
+        pass
+
+
+    def calculate_filter_area(self):
+        """
+
+        :return:
+        """
+        if hasattr(self, "throughput"):
+            self._effective_area = simps(self.throughput, self.wavelength)
+
+
+    def calculate_AB_zp(self, ABpath = os.path.join(_default_kcorr_data_path, "AB_pseudospectrum.dat"), wmin = 1500 * u.angstrom, wmax=25000 * u.angstrom):
+        """
+        """
+
+
+        AB = SpectrumClass()
+        AB.load(ABpath, wmin=wmin, wmax=wmax)
+
+        if not hasattr(self, "lambda_effective"):
+            self.calculate_effective_wavelength()
+
+        self.resample_response(new_wavelength=AB.wavelength)
+
+        transmitted_spec = self.throughput * AB.flux
+        integrated_flux = simps(transmitted_spec, AB.wavelength)
+
+        if not hasattr(self, "_effective_area"):
+            self.calculate_filter_area()
+
+        area_corr_integrated_flux = integrated_flux / self._effective_area
+
+        self.zp_AB = -2.5 * log10(area_corr_integrated_flux)
         pass
 
 
@@ -990,6 +1057,8 @@ class BaseFilterClass():
              names = ("wavelength", "throughput"), wavelength_u = u.angstrom,
              verbose = False, name = False):
         """
+        Assumes Response function is fractional rather than %.
+
         Parameters
         ----------
 
@@ -997,9 +1066,6 @@ class BaseFilterClass():
         -------
         """
 
-        """
-        Assumes Response function is fractional rather than %.
-        """
 
         if check_file_path(os.path.abspath(path), verbose = verbose):
 
@@ -1271,7 +1337,7 @@ class PhotometryClass(BaseLightCurveClass):
 
     def load_phot_from_files(self, path = False, snname = False, prefix = 'SN',
              file_type = '.dat', names = ('MJD', 'flux', 'flux_err', 'filter'),
-             format = 'ascii', filter_file_type = '.dat', verbose = True):
+             format = 'ascii', filter_file_type = '.dat', verbose = False):
         """
         Finds and loads in data (from file) into phot objects.
 
@@ -1441,6 +1507,7 @@ class PhotometryClass(BaseLightCurveClass):
             ## Label the axes
             xaxis_label_string = r'$\textnormal{Time, MJD (days)}$'
             yaxis_label_string = r'$\textnormal{Flux, erg s}^{-1}\textnormal{\AA}^{-1}\textnormal{cm}^{-2}$'
+            # yaxis_label_string = r'$\textnormal{Flux, erg s}^{-1}\textnormal{cm}^{-2}$'
 
             ax1.set_xlabel(xaxis_label_string)
             ax1.set_ylabel(yaxis_label_string)
@@ -1912,7 +1979,7 @@ class specfitClass(BaseSpectrumClass):
 
             ## Label the axes
             xaxis_label_string = r'$\textnormal{Wavelength (\AA)}$'
-            yaxis_label_string = r'$\textnormal{Flux, erg s}^{-1}\textnormal{cm}^{-2}$'
+            yaxis_label_string = r'$\textnormal{Flux, erg s}^{-1}\textnormal{\AA}^{-1}\textnormal{cm}^{-2}$'
 
             ax1.set_xlabel(xaxis_label_string)
             ax1.set_ylabel(yaxis_label_string)
@@ -1944,22 +2011,29 @@ class FilterClass(BaseFilterClass):
         """
         if check_file_path(os.path.abspath(path), verbose = verbose):
             self.data = Table.read(path, format = fmt, names = names)
-
             self.wavelength = self.data["wavelength"] * wavelength_u
+            if verbose: print("1", np.nanmax(self.wavelength))
             self.wavelength = self.wavelength.to(u.angstrom)
             self.throughput = self.data["throughput"]
+            if verbose: print("2", np.nanmax(self.wavelength))
 
             self.wavelength_u = self.wavelength.to(wavelength_u)
             self._filter_file_path = path
+            if verbose: print("3", np.nanmax(self.wavelength))
 
             filename = path.split('/')[-1]
             filename_no_extension = filename.split('.')[0]
             self.filter_name = filename_no_extension
+            if verbose: print("4", np.nanmax(self.wavelength))
 
             self.set_plot_colour(verbose = verbose)
-            # self.
+            if verbose: print("5", np.nanmax(self.wavelength))
             self.calculate_effective_wavelength()
+            if verbose: print("6", np.nanmax(self.wavelength))
             self.calculate_edges()
+            if verbose: print("7", np.nanmax(self.wavelength))
+            self.get_zeropoint()
+            if verbose: print("8", np.nanmax(self.wavelength))
 
         else:
             warnings.warn("Foo")
@@ -2060,8 +2134,11 @@ class FilterClass(BaseFilterClass):
             self._plot_colour = colour
 
         else:
-            if verbose: print(hex[self.filter_name])
+
             try:
+                if verbose:
+                    if self.filter_name in hex.keys:
+                        print(hex[self.filter_name])
                 self._plot_colour = hex[self.filter_name]
             except:
                 if verbose: print("Nope")
@@ -2071,11 +2148,18 @@ class FilterClass(BaseFilterClass):
 
 
     def get_zeropoint(self):
+        """
+
+        :return:
+        """
+
         if hasattr(self, "filter_name"):
-            self.zp_AB = calc_AB_zp(filter_name)
-            self.zp_vega = calc_vega_zp(filter_name)
+            # self.zp_AB = self.calculate_AB_zp()
+            self.calculate_AB_zp()
+            # self.zp_vega = self.calc_vega_zp(filter_name)
         else:
             warnings.warn("No filter name - have you loaded in a bandpass?")
+
 
 #  #------------------------------------#  #
 #  # Model Classes                      #  #
@@ -2083,9 +2167,11 @@ class FilterClass(BaseFilterClass):
 #
 # class (BaseLCModelClass)
 
-##------------------------------------##
-## Standalone Classes                 ##
-##------------------------------------##
+
+#  #------------------------------------#  #
+#  # Standalone Classes                 #  #
+#  #------------------------------------#  #
+
 
 class SNClass():
     """docstring for SNClass."""
@@ -2174,9 +2260,10 @@ class SNClass():
             pass
 
 
-    def load_phot(self, snname = False, path = False, file_type = '.dat',
-                  verbose = True):
+    def load_phot(self, phot_table = False, snname = False, path = False, file_type = '.dat',
+                  verbose = False):
         """
+
         Parameters
         ----------
 
@@ -2186,10 +2273,13 @@ class SNClass():
 
         if not snname:
             snname = self.name
-        if not path:
-            path = os.path.join(self.phot._default_data_dir_path, snname + file_type)
-        if verbose: print(path)
-        self.phot.load(path, verbose = verbose)
+        if phot_table:
+            self.phot.load_table(phot_table=phot_table, verbose=verbose)
+        else:
+            if not path:
+                path = os.path.join(self.phot._default_data_dir_path, snname + file_type)
+            if verbose: print(path)
+            self.phot.load(path, verbose = verbose)
 
         pass
 
@@ -2276,22 +2366,25 @@ class SNClass():
         # self._mangledspeclist = find_recon_spec(snname)
         self._mangledspeclist = find_specphase_spec(self.name)
         self.mangledspec = OrderedDict()
-
+        if verbose: print("loading mangledspec")
         if hasattr(self, 'recon_directory') and hasattr(self, '_mangledspeclist') and hasattr(self, "mangledspec"):
             for i, spec_filename in enumerate(self._mangledspeclist):
 
+                if verbose: print(i, spec_filename)
                 # self.mangledspec[spec_filename] = SpectrumClass()
                 self.mangledspec[spec_filename] = specfitClass()
-
                 self.mangledspec[spec_filename].load(spec_filename, directory = self.recon_directory,
                                               verbose = verbose)
 
                 orig_specpath = self.mangledspec[spec_filename].data.meta['comments']
                 orig_specname = orig_specpath
+                print(orig_specpath)
                 w = np.where(self.list["spec_path"] == orig_specpath)
+                if verbose: print(w[0])
 
-                self.mangledspec[spec_filename].set_MJD_obs(self.list['mjd_obs'][w].data[0])
-                self.mangledspec[spec_filename].data.add_index('wavelength')
+                if len(w[0]) > 0:
+                    self.mangledspec[spec_filename].set_MJD_obs(self.list['mjd_obs'][w].data[0])
+                    self.mangledspec[spec_filename].data.add_index('wavelength')
         #
         else:
             warnings.warn("no coco or no listfile")
@@ -2364,6 +2457,7 @@ class SNClass():
             ## Label the axes
             xaxis_label_string = r'$\textnormal{Time, MJD (days)}$'
             yaxis_label_string = r'$\textnormal{Flux, erg s}^{-1}\textnormal{\AA}^{-1}\textnormal{cm}^{-2}$'
+            # yaxis_label_string = r'$\textnormal{Flux, erg s}^{-1}\textnormal{cm}^{-2}$'
 
 
             if not multiplot:
@@ -2746,7 +2840,7 @@ class SNClass():
                 ## Check if there is something in the class to plot
                 if hasattr(self.phot.data_filters[filter_key], "wavelength") and hasattr(self.phot.data_filters[filter_key], "throughput"):
 
-                    plot_label_string = r'$' + self.phot.data_filters[filter_key].filter_name + '$'
+                    plot_label_string = r'$\textnormal{' + self.phot.data_filters[filter_key].filter_name + '}$'
 
 
                     if hasattr(self.phot.data_filters[filter_key], "_plot_colour"):
@@ -2846,28 +2940,64 @@ class SNClass():
         if hasattr(self, 'lcfit') and hasattr(self, 'spec'):
             # if verbose: print("Foo")
 
-            try:
-                # self.simplespecphot = LCfitClass()
-                self.simplespecphot = PhotometryClass()
+            # try:
+            #     # self.simplespecphot = LCfitClass()
+            #     self.simplespecphot = PhotometryClass()
+            #
+            #     lenstring = np.nanmax([len(i) for i in self.lcfit.data_filters.keys()]) ## object dtype is slow
+            #     self.simplespecphot.phot = Table(names = ('MJD', 'flux', 'flux_err', 'filter'),
+            #                                      dtype = [float, float, float, '|S'+str(lenstring)])
+            #
+            #     for i, spectrum in enumerate(self.spec):
+            #
+            #         for filter_name in self.spec[spectrum]._overlapping_filter_list:
+            #             if verbose: print(i, spectrum, filter_name)
+            #
+            #             mjd = self.spec[spectrum].mjd_obs
+            #             flux = self.lcfit.spline[filter_name](mjd)
+            #             flux_err = self.lcfit.spline[filter_name + "_err"](mjd)
+            #             newrow = {'MJD': mjd, 'flux': flux, 'flux_err': flux_err, 'filter':filter_name}
+            #             self.simplespecphot.phot.add_row([mjd, flux, flux_err, filter_name])
+            #
+            #     self.simplespecphot.unpack()
+            # except:
+            #     warnings.warn("simplespecphot failed")
 
-                lenstring = np.nanmax([len(i) for i in self.lcfit.data_filters.keys()]) ## object dtype is slow
-                self.simplespecphot.phot = Table(names = ('MJD', 'flux', 'flux_err', 'filter'),
-                                                 dtype = [float, float, float, '|S'+str(lenstring)])
 
-                for i, spectrum in enumerate(self.spec):
+            # self.simplespecphot = LCfitClass()
+            self.simplespecphot = PhotometryClass()
 
-                    for filter_name in self.spec[spectrum]._overlapping_filter_list:
-                        if verbose: print(i, spectrum, filter_name)
+            lenstring = np.nanmax([len(i) for i in self.lcfit.data_filters.keys()])  ## object dtype is slow
+            # self.simplespecphot.phot = Table(names=('MJD', 'flux', 'flux_err', 'filter'),
+            #                                  dtype=[float, float, float, '|S' + str(lenstring)])
 
-                        mjd = self.spec[spectrum].mjd_obs
-                        flux = self.lcfit.spline[filter_name](mjd)
-                        flux_err = self.lcfit.spline[filter_name + "_err"](mjd)
-                        newrow = {'MJD': mjd, 'flux': flux, 'flux_err': flux_err, 'filter':filter_name}
-                        self.simplespecphot.phot.add_row([mjd, flux, flux_err, filter_name])
+            mjd_list = []
+            flux_list = []
+            flux_err_list = []
+            filter_list = []
 
-                self.simplespecphot.unpack()
-            except:
-                warnings.warn("simplespecphot failed")
+            for i, spectrum in enumerate(self.spec):
+
+                for filter_name in self.spec[spectrum]._overlapping_filter_list:
+                    if verbose: print(i, spectrum, filter_name, type(filter_name))
+
+                    mjd = self.spec[spectrum].mjd_obs
+                    flux = self.lcfit.spline[filter_name](mjd)
+                    flux_err = self.lcfit.spline[filter_name + "_err"](mjd)
+                    # newrow = {'MJD': mjd, 'flux': flux, 'flux_err': flux_err, 'filter': filter_name}
+                    # if i == 0:
+                    #     self.simplespecphot.phot = Table(newrow)
+                    # else:
+                    #     self.simplespecphot.phot.add_row([mjd, flux, flux_err, filter_name])
+
+                    mjd_list.append(mjd)
+                    flux_list.append(flux)
+                    flux_err_list.append(flux_err)
+                    filter_list.append(filter_name)
+
+                self.simplespecphot.phot = Table((mjd_list, flux_list, flux_err_list, filter_list), names=('MJD', 'flux', 'flux_err', 'filter'))
+
+            self.simplespecphot.unpack(verbose=verbose)
 
         pass
 
@@ -2892,8 +3022,8 @@ class SNClass():
                     if hasattr(self.phot.data_filters[filtername], "_lower_edge") and \
                       hasattr(self.phot.data_filters[filtername], "_upper_edge") and \
                       hasattr(self.spec[spectrum], "data"):
-                       blue_bool = self.phot.data_filters[filtername]._lower_edge > spec_obj.min_wavelength
-                       red_bool = self.phot.data_filters[filtername]._upper_edge < spec_obj.max_wavelength
+                       blue_bool = self.phot.data_filters[filtername]._lower_edge > self.spec[spectrum].min_wavelength
+                       red_bool = self.phot.data_filters[filtername]._upper_edge < self.spec[spectrum].max_wavelength
 
                        if blue_bool and red_bool:
                             within = True
@@ -2920,11 +3050,17 @@ class InfoClass():
         if not path:
             path = _default_info_path
 
-        self.table = Table.read(path, format = "ascii.commented_header")
+        self._data = Table.read(path, format = "ascii.commented_header")
+
+        self.table = self._data
+
         self.table.meta["success"] = True
         self.snname = self.table["snname"]
         self.z_obs = self.table["z_obs"]
         self.distmod = self.table["mu"]
+        self.distance = Distance(distmod = self.table["mu"])
+        self.table["z_distmod"] = [i.z for i in self.distance]
+
         self.RA = self.table["RA"]
         self.Dec = self.table["Dec"]
 
@@ -2943,9 +3079,9 @@ class InfoClass():
 
 
 
-##----------------------------------------------------------------------------##
-##  /CODE                                                                     ##
-##----------------------------------------------------------------------------##
+#  #----------------------------------------------------------------------------#  #
+#  #  /CODE                                                                     #  #
+#  #----------------------------------------------------------------------------#  #
 
 ## FUNCTIONS THAT ITS A PAIN TO SHIFT
 
