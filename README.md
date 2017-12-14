@@ -1,7 +1,7 @@
 # **`pycoco`**
 ___
 
-## v0.9.13
+## v0.9.15
 ___
 [![astropy](http://img.shields.io/badge/powered%20by-AstroPy-orange.svg?style=flat)](http://www.astropy.org/) [![Build Status](https://travis-ci.org/RobFirth/pycoco.svg?branch=master)](https://travis-ci.org/RobFirth/pycoco)[![DOI](https://zenodo.org/badge/74136059.svg)](https://zenodo.org/badge/latestdoi/74136059)
 ___
@@ -12,8 +12,15 @@ CoCo was originally started by Natasha Karpenka, and is currently being updated 
 
 A paper, Firth et. al. 2017, is currently in prep.
 ___
- 
- * Now available on PyPi and via `pip` - packagen available to install as `pycocosn`
+
+ * Implemented a raft of changes that make it easier to interact with the spectral fits and the final templates
+
+ * fixed a particularly nasty bug (https://github.com/RobFirth/pycoco/issues/28) that was screwing up specphot (via
+ filter resampling)
+
+ * Updated notebook tarball
+
+ * Now available on PyPi and via `pip` - package available to install as `pycocosn`
  
  * Extending templates now possible with Black Body spectrum, flat and linear
 

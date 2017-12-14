@@ -8,11 +8,25 @@ date: 06-12-2016
 """
 
 import sys
+import os
+import re
 
 if __name__ is not '__main__':
 
     __author__ = "RobFirth"
     __name__ = 'pycoco'
+
+    packageDir = os.path.dirname(os.path.abspath(__file__))
+    versionFile = os.path.join(packageDir, 'version.py')
+
+    with open(versionFile, 'r') as f:
+        s = f.read()
+
+    # Look up the string value assigned to __version__ in version.py using regexp
+    versionRegExp = re.compile("__version__ = \"(.*?)\"")
+
+    # Assign to __version__
+    __version__ = versionRegExp.findall(s)[0]
 
 try:
     __file__

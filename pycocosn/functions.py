@@ -767,7 +767,7 @@ def load_info(path = defaults._default_info_path, verbose = False):
     return i
 
 
-def combine_spectra(s1, s2, wmin, wmax, scale=False, report=False, showplot=False):
+def combine_spectra(s1, s2, wmin, wmax, scale=False, report=False, showplot=False, verbose=True):
     """
 
     :param s1:
@@ -793,6 +793,7 @@ def combine_spectra(s1, s2, wmin, wmax, scale=False, report=False, showplot=Fals
     #     s2_spline = InterpolatedUnivariateSpline(s2_overlap.wavelength, s2_overlap.flux, k=5)
 
     if scale:
+        print("Scaling")
         params = Parameters()
         params.add("scale", value=1)
 
@@ -824,7 +825,7 @@ def combine_spectra(s1, s2, wmin, wmax, scale=False, report=False, showplot=Fals
     red_spec_table = s2.data[np.where(s2.data["wavelength"] > wmax)]
     red_spec_table["flux"] = red_spec_table["flux"] * scale_factor
 
-    combined_spec = SpectrumClass()
+    combined_spec = classes.SpectrumClass()
     combined_spec.load_table(vstack([blue_spec_table, overlap_spectable, red_spec_table]), path="")
 
     return combined_spec

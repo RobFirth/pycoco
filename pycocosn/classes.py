@@ -526,10 +526,13 @@ class BaseSpectrumClass():
         pass
 
 
-    def _add_to_overlapping_filters(self, filter_name):
+    def _add_to_overlapping_filters(self, filter_name, verbose=True):
         if hasattr(self, "_overlapping_filter_list"):
-            self._overlapping_filter_list = np.append(self._overlapping_filter_list, filter_name)
-            self._n_overlapping_filters = self._n_overlapping_filters + 1
+            if filter_name not in self._overlapping_filter_list:
+                self._overlapping_filter_list = np.append(self._overlapping_filter_list, filter_name)
+                self._n_overlapping_filters = self._n_overlapping_filters + 1
+            else:
+                if verbose: print("filter name already in overlap list")
         else:
             self._overlapping_filter_list = np.array(filter_name)
             self._n_overlapping_filters = 1
@@ -548,12 +551,12 @@ class BaseSpectrumClass():
         :param verbose:
         :return:
         """
-        if verbose: print(type(filter_objects), filter_objects)
+        if verbose: print("passed filter objects = ", type(filter_objects), filter_objects)
 
         if not hasattr(self, "_overlapping_filter_list"):
             self.check_overlaps(filter_objects=filter_objects, verbose=verbose)
 
-        if verbose: print(type(self._overlapping_filter_list), self._overlapping_filter_list)
+        if verbose: print("Overlapping filter list = ", type(self._overlapping_filter_list), self._overlapping_filter_list)
 
         if self._n_overlapping_filters == 1:
             if verbose: print("only one overlapping filter")
@@ -586,7 +589,7 @@ class BaseSpectrumClass():
         if verbose: print(type(iterator), iterator)
 
         for j, filter_name in enumerate(iterator):
-            if verbose: print(j, filter_name)
+            if verbose: print("getting specphot for ", j, filter_name)
 
             # if filter_name in filter_objects:
             # if filter_name in [i.filter_name for i in filter_objects]:
@@ -671,7 +674,7 @@ class BaseSpectrumClass():
                     within = False
                if verbose: print(within)
                if within:
-                   self._add_to_overlapping_filters(filter_name)
+                   self._add_to_overlapping_filters(filter_name, verbose=verbose)
             else:
                 warnings.warn("SpectrumClass.check_overlaps - something went wrong... no overlaps or data?")
         if self._n_overlapping_filters == 1:
@@ -1268,7 +1271,7 @@ class BaseFilterClass():
             warnings.warn("Doesn't look like you have loaded a filter into the object")
 
 
-    def resample_response(self, new_wavelength = False, k = 1, verbose=False,
+    def resample_response(self, new_wavelength = False, k = 1, verbose=False, revert=True,
                           *args, **kwargs):
         """
         Bit dodgy - spline has weird results for poorly sampled filters.
@@ -1284,6 +1287,9 @@ class BaseFilterClass():
         if hasattr(self, "wavelength") and hasattr(self, "throughput"):
 
             if verbose: print("resampling response")
+
+            if revert:
+                self.revert(verbose=verbose)
 
             self._wavelength_orig = self.wavelength
             self._throughput_orig = self.throughput
@@ -1338,6 +1344,23 @@ class BaseFilterClass():
 
         else:
             warnings.warn("Foo")
+
+
+    def revert(self, verbose=False):
+        """
+
+        :param verbose:
+        :return:
+        """
+
+        if verbose: print("reverting to original response")
+        if hasattr(self, "_wavelength_orig") and hasattr(self, "_throughput_orig"):
+            self.wavelength = self._wavelength_orig
+            self.throughput = self._throughput_orig
+        else:
+            warnings.warn("nothing to revert to")
+
+        pass
 
 
     def load_table(self, table, name,  directory = False, wavelength_u = u.angstrom,
@@ -2644,6 +2667,55 @@ class SNClass():
         pass
 
 
+    def load_simspec(self, spec_dir_path=defaults._default_specphase_dir_path, verbose=False):
+        """
+
+        """
+
+        if hasattr(self, "name"):
+            dir_contents = [i for i in os.listdir(spec_dir_path) if i.startswith(self.name) and i.endswith(".spec")]
+
+            if verbose: print(dir_contents)
+
+            self.sim_spec = OrderedDict()
+
+            for specfile in dir_contents:
+                self.sim_spec[specfile.replace(".spec", "")] = SpectrumClass()
+
+                self.sim_spec[specfile.replace(".spec", "")].load(specfile, directory=spec_dir_path, verbose=verbose,)
+
+            if verbose: print(self.sim_spec.keys())
+        else:
+            warnings.warn("SNClass Object has no 'name' attribute")
+        pass
+
+
+    def load_reconspec(self, snname = False, spec_dir_path = defaults._default_recon_dir_path, verbose = False):
+        """
+        Parameters
+        ----------
+
+        Returns
+        -------
+        """
+        if hasattr(self, "name"):
+            dir_contents = [i for i in os.listdir(spec_dir_path) if i.startswith(self.name) and i.endswith(".spec")]
+
+            if verbose: print(dir_contents)
+
+            self.recon_spec = OrderedDict()
+
+            for specfile in dir_contents:
+                self.recon_spec[specfile.replace(".spec", "")] = SpectrumClass()
+
+                self.recon_spec[specfile.replace(".spec", "")].load(specfile, directory=spec_dir_path, verbose=verbose,)
+
+            if verbose: print(self.recon_spec.keys())
+        else:
+            warnings.warn("SNClass Object has no 'name' attribute")
+        pass
+
+
     def load_sndist(self, path = defaults._default_sn_dist_path, format = "ascii"):
         """
         based on functions.read_sndist and load_sndist
@@ -2745,7 +2817,7 @@ class SNClass():
                 if multiplot:
                     ax1 = axes_list[i]
 
-                if filter_key in self.phot.data and sum(~np.isnan(i) for i in sn_sim.phot.data[filter_key]["flux"]): ## Kernel was falling over when there was only nan
+                if filter_key in self.phot.data and sum(~np.isnan(i) for i in self.phot.data[filter_key]["flux"]): ## Kernel was falling over when there was only nan
                     if verbose: print(i, self.phot.data[filter_key].__dict__)
                     plot_label_string = r'$\rm{' + self.phot.data_filters[filter_key].filter_name.replace('_', '\\_') + '}$'
 
@@ -3256,7 +3328,6 @@ class SNClass():
         pass
 
 
-
     def get_lcfit(self, path, verbose=False):
         """
         Parameters
@@ -3412,9 +3483,81 @@ class SNClass():
 
                     if verbose:print(within)
                     if within:
-                        self.spec[spectrum]._add_to_overlapping_filters(filtername)
+                        self.spec[spectrum]._add_to_overlapping_filters(filtername, verbose=verbose)
         else:
             warnings.warn("SNClass.check_overlaps - something went wrong... no data?")
+        pass
+
+
+    def check_sim_overlaps(self, verbose = False):
+        """
+        Checks the filters that the spectrum overlaps with.
+        originally used functions.filter_within_spec
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+        """
+        if hasattr(self.phot, "data") and hasattr(self, 'spec'):
+            for i, spectrum in enumerate(self.sim_spec):
+                if verbose:print(i, spectrum)
+                for j, filtername in enumerate(self.phot.data_filters):
+                    if verbose:print(j, filtername)
+
+                    if hasattr(self.phot.data_filters[filtername], "_lower_edge") and \
+                      hasattr(self.phot.data_filters[filtername], "_upper_edge") and \
+                      hasattr(self.sim_spec[spectrum], "data"):
+                       blue_bool = self.phot.data_filters[filtername]._lower_edge > self.sim_spec[spectrum].min_wavelength
+                       red_bool = self.phot.data_filters[filtername]._upper_edge < self.sim_spec[spectrum].max_wavelength
+
+                       if blue_bool and red_bool:
+                            within = True
+                       else:
+                            within = False
+
+                    if verbose:print(within)
+                    if within:
+                        self.sim_spec[spectrum]._add_to_overlapping_filters(filtername, verbose=verbose)
+        else:
+            warnings.warn("SNClass.check_sim_overlaps - something went wrong... no data?")
+        pass
+
+
+    def check_recon_overlaps(self, verbose = False):
+        """
+        Checks the filters that the spectrum overlaps with.
+        originally used functions.filter_within_spec
+
+        Parameters
+        ----------
+
+        Returns
+        -------
+        """
+        if hasattr(self.phot, "data") and hasattr(self, 'recon_spec'):
+            for i, spectrum in enumerate(self.recon_spec):
+                if verbose:print(i, spectrum)
+                for j, filtername in enumerate(self.phot.data_filters):
+                    if verbose:print(j, filtername)
+
+                    if hasattr(self.phot.data_filters[filtername], "_lower_edge") and \
+                      hasattr(self.phot.data_filters[filtername], "_upper_edge") and \
+                      hasattr(self.recon_spec[spectrum], "data"):
+                       blue_bool = self.phot.data_filters[filtername]._lower_edge > self.recon_spec[spectrum].min_wavelength
+                       red_bool = self.phot.data_filters[filtername]._upper_edge < self.recon_spec[spectrum].max_wavelength
+
+                       if blue_bool and red_bool:
+                            within = True
+                       else:
+                            within = False
+
+                    if verbose:print(within)
+                    if within:
+                        self.recon_spec[spectrum]._add_to_overlapping_filters(filtername)
+        else:
+            warnings.warn("SNClass.check_sim_overlaps - something went wrong... no data?")
         pass
 
 
@@ -3440,6 +3583,106 @@ class SNClass():
         else:
             warnings.warn("object has no spectra")
         pass
+
+
+    def get_sim_specphot(self, spectrum = False, filter_objects = False, verbose = False, err_size=0.01):
+        """
+
+        :param spectrum:
+        :param filter_objects:
+        :param verbose:
+        :return:
+        """
+        if hasattr(self, "sim_spec"):
+            if spectrum:
+                spec_list = [spectrum]
+            else:
+                spec_list = self.sim_spec
+
+            self.check_sim_overlaps(verbose=verbose)
+
+            if not filter_objects:
+                filter_objects = self.phot.data_filters
+
+            for i, spec in enumerate(spec_list):
+                valid_filter_objects = dict(filter_objects)
+
+                for filter_name in filter_objects.keys():
+                    if filter_name not in self.sim_spec[spec]._overlapping_filter_list:
+                        if verbose: print("No overlap. removing ", filter_name)
+                        valid_filter_objects.pop(filter_name, None)
+
+                self.sim_spec[spec].get_specphot(filter_objects=valid_filter_objects, verbose=verbose)
+
+            ## Stack all specphot
+            specphot = Table(names=("MJD", "flux", "flux_err", "filter"), dtype=('f', 'f', 'f', 'S'))
+            for i, spec in enumerate(self.sim_spec):
+
+                mjd = np.ones(len(self.sim_spec[spec].specphot["flux"])) * float(spec.split("_")[-1])
+                flux_err = np.zeros(len(self.sim_spec[spec].specphot["flux"]))
+                this_spec_table = Table(
+                    [mjd, self.sim_spec[spec].specphot["flux"], flux_err, self.sim_spec[spec].specphot["filter"]],
+                    names=("MJD", "flux", "flux_err", "filter"))
+                specphot = vstack([specphot, this_spec_table])
+
+            specphot["flux_err"] = np.ones(len(specphot["flux"]))*err_size*np.nanmax(specphot["flux"])
+
+            self.sim_specphot = PhotometryClass()
+            self.sim_specphot.load_table(specphot)
+
+        else:
+            warnings.warn("object has no spectra")
+        pass
+
+
+    def get_recon_specphot(self, spectrum=False, filter_objects=False, verbose=False, err_size=0.01):
+        """
+
+        :param spectrum:
+        :param filter_objects:
+        :param verbose:
+        :return:
+        """
+        if hasattr(self, "recon_spec"):
+            if spectrum:
+                spec_list = [spectrum]
+            else:
+                spec_list = self.recon_spec
+
+            self.check_recon_overlaps(verbose=verbose)
+
+            if not filter_objects:
+                filter_objects = self.phot.data_filters
+
+            for i, spec in enumerate(spec_list):
+                valid_filter_objects = dict(filter_objects)
+
+                for filter_name in filter_objects.keys():
+                    if filter_name not in self.recon_spec[spec]._overlapping_filter_list:
+                        if verbose: print("No overlap. removing ", filter_name)
+                        valid_filter_objects.pop(filter_name, None)
+
+                self.recon_spec[spec].get_specphot(filter_objects=valid_filter_objects, verbose=verbose)
+
+            ## Stack all specphot
+            specphot = Table(names=("MJD", "flux", "flux_err", "filter"), dtype=('f', 'f', 'f', 'S'))
+            for i, spec in enumerate(self.recon_spec):
+                mjd = np.ones(len(self.recon_spec[spec].specphot["flux"])) * float(spec.split("_")[-1])
+                flux_err = np.zeros(len(self.recon_spec[spec].specphot["flux"]))
+                this_spec_table = Table([mjd, self.recon_spec[spec].specphot["flux"], flux_err, self.recon_spec[spec].specphot["filter"]],
+                                        names=("MJD", "flux", "flux_err", "filter"))
+                specphot = vstack([specphot, this_spec_table])
+
+            specphot["flux_err"] = np.ones(len(specphot["flux"]))*err_size*np.nanmax(specphot["flux"])
+
+            self.recon_specphot = PhotometryClass()
+            self.recon_specphot.load_table(specphot)
+
+        else:
+            warnings.warn("object has no spectra")
+
+
+    pass
 
 
 class InfoClass():
