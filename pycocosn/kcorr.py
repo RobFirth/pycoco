@@ -475,7 +475,7 @@ def mangle(sn, S, spec_mjd, filters, staticfilter=False, anchor_distance=100, ve
         # ## Upper
         anchor_max_wavelength = np.nanmax([i._upper_edge for i in data_table["filter_object"]]) + anchor_distance
 
-        print(data_table)
+        if verbose: print(data_table)
         if len(data_table) < 2:
             S.flux = S.flux / S.scale_factor
 

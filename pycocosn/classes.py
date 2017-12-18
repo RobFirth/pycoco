@@ -1358,7 +1358,8 @@ class BaseFilterClass():
             self.wavelength = self._wavelength_orig
             self.throughput = self._throughput_orig
         else:
-            warnings.warn("nothing to revert to")
+            if verbose:
+                warnings.warn("nothing to revert to")
 
         pass
 

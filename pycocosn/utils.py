@@ -606,7 +606,7 @@ def get_notebooks(url="https://github.com/RobFirth/pycoco/blob/dev/notebooks/pyc
 
     if (tarball.endswith("tar.gz")):
         print("unpacking.")
-        tar = tarball.open(tarball, "r:gz")
+        tar = tarfile.open(tarball, "r:gz")
         tar.extractall()
         tar.close()
     else:
