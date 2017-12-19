@@ -53,7 +53,10 @@ __all__ = ["offset",
             "manglemin",
             "plot_mangledata",
             "manglespec3",
-            "mangle"
+            "mangle",
+            "linear_extend",
+            "flat_extend",
+            "donor_extend"
            ]
 
 ## offset is calculated as m_AB - m_vega
@@ -903,3 +906,96 @@ def linear_extend(S, extension_wavelength=False, new_max_wavelength=10000,
         return extended_spec.data
     else:
         pass
+
+
+def donor_extend(S, snobject, filter_max=False, phase=False, mjdmax=False, snname=False, info=False, verbose=True):
+    """
+
+    :param S:
+    :param snobject:
+    :param snname:
+    :param info:
+    :param verbose:
+    :return:
+    """
+
+    if not info:
+        info = classes.InfoClass()
+        info.load()
+        # info.table
+
+    if not snname:
+        snname = snobject.name
+
+    if not mjdmax:
+        if hasattr(snobject, "lcfit"):
+            if not filter_max:
+                if "BessellV" in snobject.lcfit.filter_names:
+                    mjdmax = utils.get_mjdmax(snobject, "BessellV")
+                elif "SDSS_g" in snobject.lcfit.filter_names:
+                    mjdmax = utils.get_mjdmax(snobject, "BessellV")
+                else:
+                    warnings.warn("No Bessell V or SDSS g in phot fits")
+            else:
+                mjdmax = utils.get_mjdmax(sn, filter_max)
+
+    if not phase:
+        phase = S.mjd_obs - mjdmax
+
+    if phase < -5.0:
+        donortype = "donor_early"
+    elif 5 > phase > -5:
+        donortype = "donor_peak"
+    elif phase > 5:
+        donortype = "donor_late"
+
+
+    sninfo = info.table[np.where(info.table["snname"] == snname)[0]]
+
+    IIb_dict = {"donor_early": "SN2011dh/2011dh_-17.67.txt",  ## IIb
+    "donor_peak": "SN2011fu/2011fu_4.12.txt",                 ## IIb
+    "donor_late": "SN2011fu/2011fu_17.87.txt"                 ## IIb
+    }
+
+    Ib_dict = {"donor_early": "iPTF13bvn/iPTF13bvn_-13.74.txt",  ## Ib
+    "donor_peak": "SN2007Y/2007Y_-1.79.txt",                     ## Ib
+    "donor_late": "SN1999dn/1999dn_18.82.txt"                    ## Ib
+    }
+
+    Ic_dict = {"donor_early": "SN2007gr/2007gr_-9.18.txt",    ## Ic
+    "donor_peak": "SN2003jd/2003jd_-3.14.txt",                ## Ic
+    "donor_late": "SN2007gr/2007gr_13.78.txt"                 ## Ic
+    }
+
+    donor_dict = {"IIb":IIb_dict,
+                  "Ib":Ib_dict,
+                  "Ic":Ic_dict,
+                  "Ibn":Ib_dict}
+
+
+
+    S_donor = classes.SpectrumClass()
+    S_donor.load(filename=donor_dict[sninfo["Type"][0]][donortype],
+                 directory=os.path.join(defaults._default_data_dir_path, "spec"))
+    # S_donor.plot()
+
+    wmax = np.nanmax(S.wavelength)
+    wmax_flux = S.flux[np.where(S.wavelength == wmax)][0]
+
+    if verbose: print(wmax, wmax_flux)
+
+    red_spec_table = S_donor.data[np.where(S_donor.data["wavelength"] > wmax)]
+
+    donor_flux = \
+    red_spec_table["flux"][np.where(red_spec_table["wavelength"] == np.nanmin(red_spec_table["wavelength"]))][0]
+    if verbose: print(donor_flux)
+
+    flux_scaling = wmax_flux / donor_flux
+    if verbose: print(flux_scaling)
+
+    red_spec_table["flux"] = red_spec_table["flux"] * flux_scaling
+
+    combined_spec = classes.SpectrumClass()
+    combined_spec.load_table(vstack([S.data, red_spec_table]), path="")
+
+    return combined_spec
