@@ -611,7 +611,7 @@ class BaseSpectrumClass():
                     filter_obj.resample_response(new_wavelength=self.wavelength)
 
             transmitted_spec = filter_obj.throughput * self.flux
-            integrated_flux = simps(transmitted_spec, self.wavelength)
+            integrated_flux = trapz(transmitted_spec, self.wavelength)
 
             if correct_for_area:
 
@@ -3566,7 +3566,6 @@ class SNClass():
 
     def get_specphot(self, spectrum = False, filter_objects = False, verbose = False):
         """
-
         :param spectrum:
         :param filter_objects:
         :param verbose:
