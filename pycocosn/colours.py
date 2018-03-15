@@ -109,6 +109,10 @@ hex['LSST_i'] = '#fd00ff'
 hex['LSST_z'] = '#660066'
 hex['LSST_y'] = '#000000'
 
+hex['swift_UVW1'] = '#3498db'
+hex['swift_V'] = hex['v']
+hex['swift_U'] = hex['u']
+
 ## Random Others
 hex['white'] = '#FFFFFF'
 

@@ -610,24 +610,31 @@ class BaseSpectrumClass():
             if not np.array_equal(filter_obj.wavelength, self.wavelength):
                     filter_obj.resample_response(new_wavelength=self.wavelength)
 
+            if j == 0:
+                self.specphot = Table(names=("lambda_effective", "flux", "filter"), dtype=('f4', 'f4', 'S'))
+                    
             transmitted_spec = filter_obj.throughput * self.flux
             integrated_flux = trapz(transmitted_spec, self.wavelength)
 
+            if np.isnan(integrated_flux) or integrated_flux == 0:
+                integrated_flux = simps(transmitted_spec, self.wavelength)
+                if np.isnan(integrated_flux) or integrated_flux == 0:
+                    integrated_flux = 99
+                
             if correct_for_area:
-
                 if not hasattr(filter_obj, "_effective_area"):
                     filter_obj.calculate_filter_area()
 
                 filter_area = filter_obj._effective_area
                 flux = integrated_flux / filter_area
+                if filter_area <= 0:
+                    flux = 0
 
             else:
                 flux = integrated_flux
 
             if verbose: print("flux in filter", filter_name, " is ", flux)
-            if j == 0:
-                self.specphot = Table(names=("lambda_effective", "flux", "filter"), dtype=('f4', 'f4', 'S'))
-
+            
             self.specphot.add_row((filter_obj.lambda_effective, flux, filter_name))
 
             # else:
