@@ -88,7 +88,7 @@ def _get_filters(filter_dir=False):
     return asarray(file_list)
 
 
-def _get_current_filter_registry(verbose = False):
+def _get_current_filter_registry(verbose=False):
     """
     Parameters
     ----------
@@ -101,9 +101,10 @@ def _get_current_filter_registry(verbose = False):
 
     # current_arr = loadtxt(path, dtype = str) ## This causes chaos with encoding
     current_arr = []
-    with open(path ,"r") as infile:
+    with open(path, "r") as infile:
         for line in infile:
-            if verbose: print(line.strip("\n"))
+            if verbose:
+                print(line.strip("\n"))
             current_arr.append(line.strip("\n"))
 
     current_arr = asarray(current_arr)
@@ -111,7 +112,7 @@ def _get_current_filter_registry(verbose = False):
     return current_arr
 
 
-def _check_filters(filter_dir=False, verbose = False):
+def _check_filters(filter_dir=False, verbose=False):
     """
     Parameters
     ----------
@@ -146,11 +147,11 @@ def make_list_dot_txt():
     filter_dir = _get_filter_directory()
     outpath = os.path.join(filter_dir, "list.txt")
     new_list = _get_filters()
-    savetxt(outpath, new_list, fmt = "%s")
+    savetxt(outpath, new_list, fmt="%s")
     pass
 
 
-def relist(force = False, verbose = False):
+def relist(force=False, verbose=False):
     """
     Parameters
     ----------
@@ -158,25 +159,27 @@ def relist(force = False, verbose = False):
     Returns
     -------
     """
-    if verbose: print(force, _check_filters())
+    if verbose:
+        print(force, _check_filters())
     if force or not _check_filters():
-        if verbose: print("updating list.txt")
+        if verbose:
+            print("updating list.txt")
         make_list_dot_txt()
-    else:
+    elif verbose:
         print("current list.txt is up to date. re run with force = True to force.")
     pass
 
 
-def load_coords(filename = "sncoordinates.list"):
+def load_coords(filename="sncoordinates.list"):
     """
 
     """
     path = os.path.abspath(os.path.join(__file__, os.path.pardir, filename))
-    coordtable = Table.read(path, format = 'ascii.commented_header')
+    coordtable = Table.read(path, format='ascii.commented_header')
     return coordtable
 
 
-def check_dir_path(path, verbose = False):
+def check_dir_path(path, verbose=False):
     """
     Parameters
     ----------
@@ -185,46 +188,53 @@ def check_dir_path(path, verbose = False):
     """
     try:
         if os.path.isdir(os.path.abspath(path)):
-            if verbose: print("foo")
+            if verbose:
+                print("foo")
             return True
         elif os.path.isfile(os.path.abspath(path)):
-            if verbose: print("is file")
+            if verbose:
+                print("is file")
             raise errors.PathError
         else:
-        #     if verbose: print("bar")
+            #     if verbose: print("bar")
             warnings.warn(os.path.abspath(path) +
-            " is not a valid directory. Returning 'False'.")
+                          " is not a valid directory. Returning 'False'.")
             return False
     except:
-        raise errors.PathError("The path '" + str(path) + "'is not a directory or doesn't exist.")
+        raise errors.PathError("The path '" + str(path) +
+                               "'is not a directory or doesn't exist.")
 
 
-def check_file_path(path, verbose = False):
+def check_file_path(path, verbose=False):
     """
 
     """
     try:
         if os.path.isfile(os.path.abspath(str(path))):
-            if verbose: print("bar")
+            if verbose:
+                print("bar")
             return True
 
         elif os.path.isdir(os.path.abspath(path)):
-            if verbose: print("is dir")
+            if verbose:
+                print("is dir")
             raise errors.PathError
         else:
             warnings.warn(os.path.abspath(path) +
-            " is not a valid file. Returning 'False'.")
+                          " is not a valid file. Returning 'False'.")
             return False
     except:
-        raise errors.PathError("The data file '" + str(path) + "' doesn't exist or is a directory.")
+        raise errors.PathError(
+            "The data file '" + str(path) + "' doesn't exist or is a directory.")
 
 
 def simulate_out_to_ap_table(mjd_to_sim, flux, dflux, filters_to_sim,
-                             names = ('MJD', 'flux', 'flux_err', 'filter')):
-    return Table([mjd_to_sim, flux, dflux, filters_to_sim.astype(str)], names = names)
+                             names=('MJD', 'flux', 'flux_err', 'filter')):
+    return Table([mjd_to_sim, flux, dflux, filters_to_sim.astype(str)], names=names)
 
 
-def specphot_out_to_ap_table(out, mjdmax, filter_name, names = ('MJD', 'flux', 'flux_err', 'filter'),
+def specphot_out_to_ap_table(out, mjdmax, filter_name,
+                             names=('MJD', 'flux', 'flux_err', 'filter'),
                              remove_zero=False, verbose=False):
     """
 
@@ -236,7 +246,7 @@ def specphot_out_to_ap_table(out, mjdmax, filter_name, names = ('MJD', 'flux', '
     :return:
     """
 
-    mjd = out[0]+mjdmax
+    mjd = out[0] + mjdmax
 
     if not isinstance(filter_name, str):
         filters = Column([filter_name.astype(str) for i in out[0]])
@@ -245,14 +255,16 @@ def specphot_out_to_ap_table(out, mjdmax, filter_name, names = ('MJD', 'flux', '
 
     if remove_zero:
         w = where(out[1] != 0.0)
-        ap_table = Table([mjd[w], out[1][w], zeros(len(out[1][w])), filters[w]], names = names)
+        ap_table = Table([mjd[w], out[1][w], zeros(
+            len(out[1][w])), filters[w]], names=names)
 
     else:
-        ap_table = Table([mjd, out[1], zeros(len(out[1])), filters], names = names)
+        ap_table = Table(
+            [mjd, out[1], zeros(len(out[1])), filters], names=names)
     return ap_table
 
 
-def read_list_file(path, names = ('spec_path', 'snname', 'mjd_obs', 'z'), verbose = True):
+def read_list_file(path, names=('spec_path', 'snname', 'mjd_obs', 'z'), verbose=True):
     """
     Parameters
     ----------
@@ -261,17 +273,17 @@ def read_list_file(path, names = ('spec_path', 'snname', 'mjd_obs', 'z'), verbos
     """
     check_file_path(path)
 
-    data = Table.read(path, names = names, format = 'ascii')
+    data = Table.read(path, names=names, format='ascii')
     return data
 
 
 def strictly_increasing(L):
     """https://stackoverflow.com/a/4983359"""
-    return all(x<=y for x, y in zip(L, L[1:]))
+    return all(x <= y for x, y in zip(L, L[1:]))
 
 
-def check_list(path, mjd = True, phase = False, names = ('spec_path', 'snname', 'mjd_obs', 'z'),
-               specfiletype=".txt", verbose = True):
+def check_list(path, mjd=True, phase=False, names=('spec_path', 'snname', 'mjd_obs', 'z'),
+               specfiletype=".txt", verbose=True):
     """
 
     :return:
@@ -292,7 +304,8 @@ def check_list(path, mjd = True, phase = False, names = ('spec_path', 'snname', 
             except:
                 pass
             phases.append(phase)
-            if verbose: print(phase)
+            if verbose:
+                print(phase)
 
         return strictly_increasing(phases)
 
@@ -309,8 +322,10 @@ def check_all_lists(lists_dir, verbose=False):
     master_list = make_master_list(lists_dir)
 
     for spec_listfile in master_list:
-        if verbose: print(spec_listfile)
-        check_status = check_list(os.path.join(defaults._default_list_dir_path, spec_listfile), verbose=verbose)
+        if verbose:
+            print(spec_listfile)
+        check_status = check_list(os.path.join(
+            defaults._default_list_dir_path, spec_listfile), verbose=verbose)
         checklist.append(check_status)
         if check_status:
             print(spec_listfile, " passed")
@@ -330,8 +345,8 @@ def make_master_list(lists_dir):
     else:
         check_dir_path(lists_dir)
         l = os.listdir(lists_dir)
-    badlist = ['.DS_Store',  'master.list', 'lightcurves.list',]
-    ## remove hidden files etc.
+    badlist = ['.DS_Store',  'master.list', 'lightcurves.list', ]
+    # remove hidden files etc.
     goodlist = [i for i in l if i not in badlist]
 
     return goodlist
@@ -352,8 +367,8 @@ def setup_plot_defaults():
     pass
 
 
-def load_formatted_phot(path, format = "ascii", names = False,
-                        verbose = True):
+def load_formatted_phot(path, format="ascii", names=False,
+                        verbose=True):
     """
     Loads a single photometry file.
 
@@ -366,15 +381,15 @@ def load_formatted_phot(path, format = "ascii", names = False,
     errors.StringWarning(path)
 
     if names:
-        phot_table = Table.read(path, format = format, names = names)
+        phot_table = Table.read(path, format=format, names=names)
     else:
-        phot_table = Table.read(path, format = format)
+        phot_table = Table.read(path, format=format)
 
-    phot_table.meta = {"filename" : path}
+    phot_table.meta = {"filename": path}
 
     phot_table["MJD"].unit = u.day
     phot_table["flux"].unit = u.cgs.erg / u.si.angstrom / u.si.cm ** 2 / u.si.s
-    phot_table["flux_err"].unit =  phot_table["flux"].unit
+    phot_table["flux_err"].unit = phot_table["flux"].unit
 
     return phot_table
 
@@ -388,8 +403,8 @@ def get_mjdmax(sn, filter_key):
     """
     f = sn.lcfit.spline[filter_key]
     mjd_spline = arange(nanmin(sn.phot.data[filter_key]["MJD"]),
-                           nanmax(sn.phot.data[filter_key]["MJD"]),
-                           0.001)
+                        nanmax(sn.phot.data[filter_key]["MJD"]),
+                        0.001)
     w = where(f(mjd_spline) == nanmax(f(mjd_spline)))
 
     mjdmax = mjd_spline[w]
@@ -406,8 +421,8 @@ def get_mjdmax_flux(sn, filter_key):
     """
     f = sn.lcfit.spline[filter_key]
     mjd_spline = arange(nanmin(sn.phot.data[filter_key]["MJD"]),
-                           nanmax(sn.phot.data[filter_key]["MJD"]),
-                           0.001)
+                        nanmax(sn.phot.data[filter_key]["MJD"]),
+                        0.001)
     return nanmax(f(mjd_spline))
 
 
@@ -420,8 +435,8 @@ def get_max_info(sn, filter_key):
     """
     f = sn.lcfit.spline[filter_key]
     mjd_spline = arange(nanmin(sn.phot.data[filter_key]["MJD"]),
-                           nanmax(sn.phot.data[filter_key]["MJD"]),
-                           0.001)
+                        nanmax(sn.phot.data[filter_key]["MJD"]),
+                        0.001)
     w = where(f(mjd_spline) == nanmax(f(mjd_spline)))
     mjdmax = mjd_spline[w]
 
@@ -436,6 +451,7 @@ if sys.version_info < (3,):
         return x
 else:
     import codecs
+
     def b(x):
         return codecs.latin_1_encode(x)[0]
 
@@ -448,7 +464,7 @@ def gaussian(x, g0, x0, sigma0):
     1D gaussian
     """
 
-    gauss = g0*(exp((-(x-x0)*(x-x0))/(2.0*sigma0*sigma0)))
+    gauss = g0 * (exp((-(x - x0) * (x - x0)) / (2.0 * sigma0 * sigma0)))
     return gauss
 
 
@@ -469,7 +485,7 @@ def weighted_mean(values, sigma, weights=False, correct=False):
     return wmean, wmean_err
 
 
-def get_snname_from_listfile(listfilepath, filename = True, from_column = False, compare = False):
+def get_snname_from_listfile(listfilepath, filename=True, from_column=False, compare=False):
     """
 
     :param filename:
@@ -498,7 +514,7 @@ def get_snname_from_listfile(listfilepath, filename = True, from_column = False,
     pass
 
 
-def find_sn_recon_spec(snname, dir_path = defaults._default_recon_dir_path, verbose = False):
+def find_sn_recon_spec(snname, dir_path=defaults._default_recon_dir_path, verbose=False):
     """
 
     Parameters
@@ -515,10 +531,10 @@ def find_sn_recon_spec(snname, dir_path = defaults._default_recon_dir_path, verb
     try:
         ls = array(os.listdir(dir_path))
 
-        wspec = where(char.find(ls, file_type, start = -len(file_type)) > -1)
+        wspec = where(char.find(ls, file_type, start=-len(file_type)) > -1)
         spec_list = ls[wspec]
 
-        ## The last 18 chars are for the MJD and file_type
+        # The last 18 chars are for the MJD and file_type
         wsn = where([i[:-18] == snname for i in spec_list])
         snmatch_list = spec_list[wsn]
 
@@ -538,7 +554,7 @@ def find_sn_recon_spec(snname, dir_path = defaults._default_recon_dir_path, verb
         return False
 
 
-def find_recon_spec(dir_path=defaults._default_recon_dir_path, file_type = ".spec", verbose=False):
+def find_recon_spec(dir_path=defaults._default_recon_dir_path, file_type=".spec", verbose=False):
     """
 
     :param dir_path:
@@ -563,7 +579,7 @@ def find_recon_spec(dir_path=defaults._default_recon_dir_path, file_type = ".spe
         return False
 
 
-def find_unique_SN_in_recon(dir_path = defaults._default_recon_dir_path, file_type = ".spec", verbose = False):
+def find_unique_SN_in_recon(dir_path=defaults._default_recon_dir_path, file_type=".spec", verbose=False):
     """
 
     :param dir_path:
@@ -572,7 +588,8 @@ def find_unique_SN_in_recon(dir_path = defaults._default_recon_dir_path, file_ty
     :return:
     """
 
-    recon_spec = find_recon_spec(dir_path=dir_path, file_type=file_type,verbose=verbose)
+    recon_spec = find_recon_spec(
+        dir_path=dir_path, file_type=file_type, verbose=verbose)
 
     return sort(unique([i.split("_")[0] for i in recon_spec]))
 
@@ -592,7 +609,8 @@ def get_notebooks(url="https://github.com/RobFirth/pycoco/blob/dev/notebooks/pyc
 
     change = ""
     while change.lower() not in ["y", "n"]:
-        change = input("change default destination? y/[n] (" + targetdir + "): ")
+        change = input(
+            "change default destination? y/[n] (" + targetdir + "): ")
         if change == "":
             change = "n"
         if change.lower() not in ["y", "n"]:
@@ -602,7 +620,8 @@ def get_notebooks(url="https://github.com/RobFirth/pycoco/blob/dev/notebooks/pyc
         targetdir = input("input target directory for notebooks: ")
 
     tarball = os.path.join(targetdir, 'pycoco_notebooks.tar.gz')
-    urllib.request.urlretrieve('https://github.com/RobFirth/pycoco/blob/dev/notebooks/pycoco_tutorial_notebooks.tar.gz?raw=true', tarball)
+    urllib.request.urlretrieve(
+        'https://github.com/RobFirth/pycoco/blob/dev/notebooks/pycoco_tutorial_notebooks.tar.gz?raw=true', tarball)
 
     if (tarball.endswith("tar.gz")):
         print("unpacking.")
@@ -610,7 +629,8 @@ def get_notebooks(url="https://github.com/RobFirth/pycoco/blob/dev/notebooks/pyc
         tar.extractall()
         tar.close()
     else:
-        warnings.warn("Something went wrong. Please raise the issue on GitHub.")
+        warnings.warn(
+            "Something went wrong. Please raise the issue on GitHub.")
         return
 
     print("downloaded tarball to ", tarball)
